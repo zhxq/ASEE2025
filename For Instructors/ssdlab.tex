@@ -1,0 +1,285 @@
+\documentclass[11pt]{article}
+
+\usepackage{xcolor}
+\usepackage{times}
+\usepackage{enumitem}
+\usepackage{makecell}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{soul}
+\usepackage[raggedrightboxes]{ragged2e}
+\renewcommand\theadalign{bc}
+\renewcommand\theadfont{\bfseries}
+\renewcommand\theadgape{\Gape[4pt]}
+\renewcommand\cellgape{\Gape[4pt]}
+
+%% Page layout
+\oddsidemargin 0pt
+\evensidemargin 0pt
+\textheight 600pt
+\textwidth 469pt
+\setlength{\parindent}{0em}
+\setlength{\parskip}{1ex}
+
+\newcommand{\TODO}[1]{\textcolor{red}{#1}}
+
+\begin{document}
+
+\title{CIS341, Fall 2023\\
+SSD Lab: SSD Flash Translation Layer (FTL)  \\
+%Assigned: Feb. 8 \\
+%Due: Feb. 26, 11:59PM
+}
+
+\author{}
+\date{}
+
+\maketitle
+\textbf{This assignment is due Dec 9, 11:59 pm.}
+
+\section{Introduction \& Logistics}
+The purpose of this assignment is to learn how SSDs handle incoming requests and perform background tasks internally.
+You'll do this by implementing a flash translation layer (FTL), by which you will find yourself more familiar with how SSDs work.
+
+This is an individual project. All handins are electronic.
+Clarifications and corrections will be posted on the Blackboard course page.
+
+\section{Handout Instructions}
+
+Start by copying {\tt proj5-handout.tar} to your home directory
+on {\tt classserver.university.edu} machine.
+Then untar the tarball file to unpack the assignment in the directory.
+\begin{verbatim}
+  unix> cd 
+  unix> cp /home/cis341-proj/proj5-handout.tar .
+  unix> tar -xvf proj5-handout.tar  
+\end{verbatim}
+
+
+\section{Project Details}
+
+It's now the early 2000s,
+and you are now working for Yuksung, an international corporation with many different fields of operations.
+Yuksung Semiconductors decided to hire you since they heard you developed the virtual memory management system in Asahi OS,
+and they need your help to implement a new address translation scheme for their new direction: SSDs.
+
+SSDs are much faster than its main competitor, hard disk drives (HDDs). 
+Instead of using spinning disks like HDDs do, SSDs use NAND chips to store data.
+Locating, reading, and writing data is blazing fast since everything is electronic without moving parts.
+To ensure the future market share of Yuksung SSDs, they must be able to support the same protocol HDDs support.
+However, NAND chips do not support in-place updates, 
+which means the SSD firmware has to be specially designed to allow in-place updates from the host computer's point of view.
+the SSD internally should perform background tasks to provide such support for the traditional block interface HDDs had been using, which is done by the flash translation layer (FTL).
+
+To provide such support, the SSD should have a \textbf{mapping table} mapping logical addresses to physical addresses. 
+The logical address is the address the computer sees, whereas the physical address is where the data is located in the SSD. 
+The computer can issue in-place updates to SSDs, but it does not know that SSDs will internally change the mapping.
+
+Your job is to implement such an FTL mapping scheme so that the SSD works with existing storage protocols.
+The mapping table will be initialized in the \texttt{init()} function your colleges have finished. Each mapping table entry \texttt{struct map}, using the logical page number as its index, has the following attributes:
+\begin{itemize}
+    \item \texttt{int ppn}: the corresponding physical page number.
+    \item \texttt{bool isValid}: if this page mapping is valid.
+\end{itemize}
+
+A \textbf{reverse mapping table} is also needed to check physical-to-logical mapping with a physical page number-based index. This table is especially important during GC. Each entry is a \texttt{struct rmap}, and has the following attributes:
+
+\begin{itemize}
+    \item \texttt{int lpn}: the corresponding logical page number.
+    \item \texttt{bool isValid}: if this page mapping is valid.
+\end{itemize}
+
+The SSD also requires \textbf{tables to track the status of NAND blocks and NAND pages}. 
+The NAND block information table records if the block is free, full, or used as the frontier. 
+We use this table to see which block we can use for GC or as the next frontier block and track how many invalid pages are there in the block when selecting GC victim.
+On the other hand,
+the NAND page information records if a NAND page in a NAND block is currently free, valid, or invalid. 
+We use this table mainly for debugging purposes. 
+
+Your colleagues have finished the following helper functions so you can use them.
+These helper functions provide all kinds of assertions notifying you immediately when you have a (reverse) mapping table integrity issue. Having assertion errors in your submission could affect your final score (see \hyperref[sec:eval]{Evaluation} section).
+
+\begin{itemize}
+    \item \texttt{bool isFrontierBlockFull()}: checks if the current frontier block is full. Returns \texttt{true} if it is full and \texttt{false} otherwise.
+    \item \texttt{int getAvailPPN()}: gets the next available physical page number (PPN) from the current open block. Returns a page number. Returns -1 if there is no free page available.
+    
+    \item \texttt{bool isValidLPNMapping(int lpn)}: returns \texttt{true} if this logical page number (LPN) is in use (having a valid mapping to a physical page number in the mapping table). Returns \texttt{false} otherwise.
+    \item \texttt{int getL2PMapping(int lpn)}: returns the PPN given the LPN. 
+    \item \texttt{void setL2PMapping(int lpn, int ppn)}: sets the logical to physical page number mapping if PPN $\geq$ 0. Invalidates the mapping table entry for this LPN if PPN is -1. 
+
+    \item \texttt{bool isValidPPNMapping(int ppn)}: returns \texttt{true} if this PPN is in use (having a valid mapping to a logical page number in the reverse mapping table). Returns \texttt{false} otherwise.
+    \item \texttt{int getP2LMapping(int ppn)}: returns the LPN given the PPN. 
+    \item \texttt{void setP2LMapping(int lpn, int ppn)}: sets the physical to logical page number mapping in the reverse mapping table, then marks the NAND page as valid if LPN $\geq$ 0. 
+    Invalidates the reverse mapping table entry for this LPN, and sets the NAND page given the PPN if LPN is -1. 
+
+    \item \texttt{void useNextFreeBlock()}: sets the frontier block to the next available free block. Returns \texttt{false} if there are no available free blocks; returns \texttt{true} if the operation is successful. 
+    \item \texttt{void markBlockFree(int block)}: Erases the block; marks the given NAND block as free and all NAND pages inside the block as free for future use when a new block is needed.
+
+    \item \texttt{int ppnFromBlockPageNum(int block, int page)}: returns the physical page number by giving the block number and the page number inside the block.
+
+    \item \texttt{int getBlockStatus(int block)}: check the block status. Returns the block status using an \texttt{enum} value described below.
+    \begin{itemize}
+        \item \texttt{BLOCK\_FREE}: indicates the block is free.
+        \item \texttt{BLOCK\_FULL}: indicates the block is full, and data in the block cannot be updated.
+        \item \texttt{BLOCK\_FRONTIER}: indicates the block is currently the frontier block.
+    \end{itemize}
+    
+    \item \texttt{bool shouldGC()}: returns true if the number of remaining free blocks falls below a certain percentage. You should call your GC function when the return value is true.
+    \item \texttt{int countBlockInvalidPages(int block)}: returns the number of invalid NAND pages in the given NAND block.
+\end{itemize}
+
+\textbf{Your job is to implement:}
+\begin{enumerate}
+    \item \texttt{int findVictim()} in \texttt{findvictim.c}: finds a victim block and returns the victim block number. If there are no eligible victim blocks (e.g., there are no full blocks, or all pages in all full blocks are valid), return -1.
+    \begin{itemize}
+        \item Think about how to pick a victim block thoroughly. Please also include comments on what kind of victim selection algorithm you have chosen. 
+        \item You should only select from full blocks when finding a victim. Free blocks and the frontier block cannot be selected as the victim.
+    \end{itemize}
+    \item \texttt{void gc(int victimBlock)} in \texttt{gc.c}: do GC on a given victim block.
+    \begin{itemize}
+        \item You should remap the (reverse) mapping table if the physical page is valid, i.e., you have to map the logical-to-physical mapping from the old physical page to the new physical page.
+        \item You can find all physical page numbers in a block using \texttt{int ppnFromBlockPageNum(int block, int page)}, given the block number and iterating through the page number within the block (from 0 to \texttt{PAGESPERBLOCK - 1}, inclusive).
+        \item In the rare corner case when \texttt{shouldGC()} returns \texttt{true} but all full blocks are valid (in this case \texttt{findVictim()} returns -1), you should not call \texttt{gc()}. One of the traces tests this case, which we will describe \hyperref[sec:traces]{below}.
+    \end{itemize}
+    \item \texttt{void handleWriteRequests(int addr, int size)} in \texttt{handlewrite.c}: handles the mapping table lookup by utilizing functions above based on the memory request given as arguments. Here are some things you should be cautious about:
+    \begin{itemize}
+        \item When writing a page, you should check if there was a mapping for that logical page number. If so, you should invalidate its old reverse mapping table entry. 
+        \item You need to update both the mapping table and the reverse mapping table when writing a page.
+        \item You need to ensure that there is always at least a given number of free blocks. This can be achieved by checking \texttt{shouldGC()}; if the result is true, you can call \texttt{findVictim()} and issue \texttt{gc()} if the victim block returned by \texttt{findVictim()} is not -1.
+    \end{itemize}
+\end{enumerate}
+
+You should also look at the \texttt{init()} function to see how the (reverse) mapping table is initialized before the SSD starts running. The SSD has a logical capacity of 1 GiB. You can see more parameters in \texttt{ssdlab.h}.
+
+When debugging your implementation, we suggest that you trim the trace file shorter and see if that part works well. 
+If so, add some more operations and see if that works.
+You can also use divide-and-conquer: Try trimming the trace to half and see if it works correctly. If it works, then debug your program with the other half of the trace; if not, then debug your program with this half of the trace, and repeat.
+
+\section{Evaluation}
+\label{sec:eval}
+We will evaluate your implementation by two parts. 
+
+\begin{enumerate}
+    \item Correctness (80\%).
+    We will check the integrity of your (reverse) mapping table by running your compiled binary with the \texttt{-i} flag and see if (1) your (reverse) mapping table has any integrity issues and (2) if the number of correct entries in your (reverse) mapping table is the same as in \texttt{ssdlab-ref} with the same trace file. In this lab, correct entries in the mapping table and the reverse mapping table should match each other since our FTL is primitive: each logical-to-physical mapping should match a physical-to-logical mapping. Unmatched entries indicate (reverse) mapping table corruption and may result in data loss. We are NOT checking if your (reverse) mapping table entry is the same as our reference version entry-by-entry since your GC algorithm could affect your (reverse) mapping table.
+    
+    The number of valid (reverse) mapping table entries will be used for determining your score in this part: the mapping and the reverse mapping table are worth 40 points each, and we will compare the number of valid entries to the \texttt{ssdlab-ref}. 
+    \begin{itemize}
+        \item If your code does not work properly and fails the assertions, we use the numbers at the time of the failure. A 50\% penalty will be applied to the final score. An example: if the correct number of valid entries is 1000, but your mapping table has 950 valid entries, and your reverse mapping table has 1100 valid entries when hitting the first assertion failure, your total score will be $(((1 - |950-1000|/1000) \cdot 40) + ((1 - |1100-1000|/1000) \cdot 40)) \cdot 0.5 = 37$ out of 80.
+        \item If your code has no assertion errors but did not pass the final integrity check, we still use the same formula above but with a 25\% penalty to the final score.
+    \end{itemize}
+      
+    
+    \item Write amplification factor (WAF) (20\%). You can use any victim selection policy you want, 
+    but they may have different write amplification factors, which will be calculated as follows:
+
+    $$\text{WAF}=\frac{\text{Pages from host writes + Pages from GC}}{\text{Pages from host writes}}$$
+    
+    A good implementation should have a low WAF by using a good victim selection algorithm.
+    This is crucial in real SSDs as NAND blocks can only endure a limited number of erases; internal GC traffic also reduces the speed of serving host requests.
+    You will also be competing with your classmates: your score depends on your WAF among your classmates. 
+    If assertation errors happen, you will receive 0\% for this part; otherwise, your score will be calculated as follows (recall lower WAF is better):
+    
+    $$\text{Your score} = \frac{\text{The lowest WAF in class}}{\text{Your WAF}} \cdot 20$$
+\end{enumerate}
+
+You need to evaluate your simulator with traces.
+The trace file format is similar to the \texttt{cachelab},
+but only one operation, \texttt{W}, is allowed.
+All other operations will be ignored.
+Each row in the trace file should start with a space,
+then \texttt{W},
+then the address in hex,
+and finally, the size to read in bytes in decimal.
+For example, 
+``\texttt{ W ff00ac,1024}" indicates writing 1024 bytes starting from the location \texttt{0xff00ac}.
+\phantomsection\label{sec:traces}
+We provided several trace files for your convenience. These trace files are from the paper ``\href{https://dl.acm.org/doi/10.1145/3078468.3078479}{Understanding Storage Traffic Characteristics on Enterprise Virtual Desktop Infrastructure},'' published at the ACM International Systems and Storage Conference (SYSTOR) in 2017. We have processed the traces to fit the 1GiB SSD logical address space. They are located in the \texttt{./traces} folder.
+\begin{itemize}
+    \item \texttt{systor17-1.trace}: this trace includes the rare corner case when the SSD reaches the GC watermark (\texttt{shouldGC()} returns true), but all pages in all valid blocks are valid. The first operation \texttt{ W,0,1073741824} fills the SSD logical space, and all following writes will be updates to different locations within the logical address range. We added this operation for you to test the corner case.
+    \item \texttt{systor17-2.trace} to \texttt{systor17-6.trace}: just five more traces from the paper. They do not contain the special operation filling the whole SSD logical space as described above. Easier than \texttt{systor17-1.trace} to deal with.
+    \item \texttt{systor17-6-short.trace}: the first 99 lines of \texttt{systor17-6-short.trace} for you to get started on the project.
+\end{itemize}
+
+We will be using \texttt{systor17-1.trace} in our evaluation, but we may also use other trace files when grading your implementation. A good strategy is to start with \texttt{systor17-6-short.trace}, then evaluate using \texttt{systor17-2.trace} to \texttt{systor17-6.trace}, and lastly \texttt{systor17-1.trace}.
+
+
+
+\section{Autochecking Your Work}
+
+\subsection{Compiling Your Work}
+
+To help you get started, 
+we also provided a precompiled reference version of \texttt{gc()} and \texttt{findVictim()}. 
+This enables you to start working on \texttt{handleWriteRequests()} without implementing \texttt{gc()} and \texttt{findVictim()} up front.
+\begin{itemize}
+    \item To compile only using your code without the reference functions, run~\texttt{ make } as usual.
+    \item To compile using the reference \texttt{gc()}, run~\texttt{ make withsamplegc}.
+    \item To compile using the reference \texttt{findVictim()}, run~\texttt{ make withsamplefindvictim}.
+    \item To compile using both reference functions, run \texttt{ make withsamplefindvictimandgc}.
+\end{itemize}
+
+The compiled binary will be named as \texttt{ssdlab}. 
+You can also use these reference functions in the autograder as well by providing correct flags (see the \hyperref[sec:autograder]{Autograder} subsection below).
+
+\subsection{Running Your Work}
+
+The compiled \texttt{ssdlab} binary accepts the following flags:
+
+\begin{enumerate}
+    \item \texttt{-h}: prints help message.
+    \item \texttt{-t tracefile}: provides a trace file to the simulator. Should be used with the following flags to see your implementation results.
+    \item \texttt{-i}: checks your (reverse) mapping table integrity. This checks if your logical-to-physical mappings are the same as your physical-to-logical mappings. This also prints the number of (reverse) mapping table entries. Passing the check does not necessarily mean your implementation is correct: your number of mapping table entries should also be correct, which you can check using the autograder (see below).
+    \item \texttt{-w}: prints WAF statistics of your implementation.
+\end{enumerate}
+
+
+\subsection{Autograder}
+\label{sec:autograder}
+
+You can use the \texttt{autograder.py} to check your work. 
+When running \texttt{autograder.py} providing the trace file, it will run your implementation and the reference executable \texttt{ssdlab-ref} using the given trace file. 
+You can also use the reference \texttt{gc()} and \texttt{findVictim()} we have provided by using the given flags.
+
+\begin{enumerate}
+    \item \texttt{-h}: prints help message.
+    \item \texttt{-t tracefile}: provides a trace file to the simulator. Should be used with the following flags to see your implementation results.
+    \item \texttt{-i}: checks your (reverse) mapping table integrity and if your number of (reverse) mapping table entries is correct compared to the reference.
+    \item \texttt{-w}: prints WAF statistics of your implementation and the \texttt{ssdlab-ref}. Remember, we are not grading your work based on the WAF of our implementation in the reference binary; your final score is based on the best WAF among your classmates.
+    \item \texttt{-g}: compiles your code with the reference \texttt{gc()} function provided by the instructors.
+    \item \texttt{-f}: compiles your code with the reference \texttt{findVictim()} function provided by the instructors.
+\end{enumerate}
+
+You can use \texttt{-g} and \texttt{-f} together if you need to.
+
+
+
+\section{Handin Instructions}
+
+%\begin{quote}
+%\bf SITE-SPECIFIC: Insert text here that tells each student how to
+%hand in their {\tt bits.s} solution file at your school.
+%\end{quote}
+
+To submit your assignment, perform the following command.
+\begin{verbatim}
+  unix> ./submission
+\end{verbatim}
+
+The submission script will check if your \texttt{handlewrite.c}, \texttt{findvictim.c}, and \texttt{gc.c} exist. If so, the submission script will submit these three files; if at least one of the files does not exist, the submission will quit with an error message stating the file(s) do(es) not exist.
+
+The submission script also runs \texttt{autograder.py} for your reference. 
+\texttt{traces/systor17-1.trace} will be the test case used by the submission script.
+Nevertheless, you should run other traces before submission to cover more test cases.
+
+\section{Advice}
+
+\begin{itemize}
+    \item \textbf{Start with shorter traces.} As mentioned above, you should try shorter traces first and ensure your program performs the same as the \texttt{ssdlab-ref}. Eventually, you can add more things to the trace and see if everything still works fine.
+    \item \textbf{Read the comments thoroughly before you proceed.} 
+    The comments contain essential information regarding the expected input and output. You should read the comment thoroughly. If you have any questions, please contact the TA or the Professor immediately.
+    \item \textbf{Start early and often!} We have provided enough time for you to complete this assignment. Don't hesitate to contact your TA if you have any questions or concerns regarding this assignment. There is no excuse for turning in assignments late except for university-documented cases.
+    \item \textbf{Do not cheat!} This is a matter of academic integrity. All violations will be reported. Do not share codes with each other - both the code provider and the cheater will be responsible. Come to office hours if you have any questions regarding your assignments (instead of cheating).
+\end{itemize}
+
+\end{document}

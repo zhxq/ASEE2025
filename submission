@@ -1,0 +1,27 @@
+#!/bin/bash
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+mkdir -p ~/turnin
+if [ -e handlewrite.c ] && [ -e gc.c ] && [ -e findvictim.c ]
+then
+    echo -e "${GREEN}↓↓Checking (reverse) mapping table integrity when running systor17-1.trace↓↓${NC}"
+    ./autograder.py -t traces/systor17-1.trace -i
+    echo -e "${GREEN}↑↑Above is your (reverse) mapping table integrity when running systor17-1.trace↑↑${NC}"
+    echo ""
+    echo -e "${BLUE}↓↓Your WAF statistics when running systor17-1.trace↓↓${NC}"
+    ./autograder.py -t traces/systor17-1.trace -w
+    echo -e "${BLUE}↑↑Your WAF statistics when running systor17-1.trace↑↑${NC}"
+    echo ""
+    echo "Copying your handlewrite.c, gc.c and findvictim.c to the turnin folder..."
+    cp ./handlewrite.c ~/turnin
+    cp ./gc.c ~/turnin
+    cp ./findvictim.c ~/turnin
+    echo "Homework submitted."
+else
+    echo "handlewrite.c, gc.c, and/or findvictim.c do(es) not exist. Exiting."
+    echo "Homework NOT submitted."
+fi

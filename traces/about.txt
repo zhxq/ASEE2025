@@ -1,0 +1,6 @@
+Traces under this folder are from published papers.
+
+systor17-*.trace: 
+Paper title: Understanding Storage Traffic Characteristics on Enterprise Virtual Desktop Infrastructure
+Paper link: https://dl.acm.org/doi/10.1145/3078468.3078479
+Traces available at: http://iotta.snia.org/traces/block-io/4928

@@ -1,0 +1,4 @@
+.pytest_cache
+.vscode
+*.o
+!sample_*.o
