@@ -71,19 +71,19 @@ static int frontierBlock = 0;
 static int frontierPage = 0;
 
 static int hostWritePages = 0;
-int realGCPages;
+static int realGCPages;
 
-int totalLogiPages;
-int totalPhysPages;
+static int totalLogiPages;
+static int totalPhysPages;
 
-struct map *maptbl;
-struct rmap *rmap;
+static struct map *maptbl;
+static struct rmap *rmap;
 
-bool showError;
+static bool showError;
 
-int numFreeBlocks;
-struct block_info block_info[TOTALPHYSBLOCKS];
-struct page_info page_info[TOTALPHYSBLOCKS][PAGESPERBLOCK];
+static int numFreeBlocks;
+static struct block_info block_info[TOTALPHYSBLOCKS];
+static struct page_info page_info[TOTALPHYSBLOCKS][PAGESPERBLOCK];
 
 // FROM FEMU START
 #define BLK_BITS   (16)

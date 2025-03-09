@@ -1,4 +1,5 @@
 .pytest_cache
 .vscode
 *.o
+./ssdlab
 !sample_*.o
