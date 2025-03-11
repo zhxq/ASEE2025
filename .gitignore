@@ -2,4 +2,4 @@
 .vscode
 *.o
 ./ssdlab
-!sample_*.o
+./ssdlab-ref

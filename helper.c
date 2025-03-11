@@ -1,6 +1,32 @@
 
 #include "ssdlab.h"
 
+char *trace_file;
+bool toIntegrityCheck = 0;
+bool toPrintWAF = 0;
+bool exceedMaxOps = 0;
+
+bool errorOccured = 0;
+
+int frontierBlock = 0;
+int frontierPage = 0;
+
+int hostWritePages = 0;
+int realGCPages = 0;
+
+int totalLogiPages = 0;
+int totalPhysPages = 0;
+
+struct map *maptbl;
+struct rmap *rmap;
+
+bool showError = false;
+
+int numFreeBlocks;
+struct block_info block_info[TOTALPHYSBLOCKS];
+struct page_info page_info[TOTALPHYSBLOCKS][PAGESPERBLOCK];
+
+
 // Translates a ppa struct into page index for rmap.
 int ppa2pgidx(struct ppa *ppa){
     return ppa->g.blk * PAGESPERBLOCK + ppa->g.pg;
@@ -34,6 +60,7 @@ bool useNextFreeBlock(){
             block_info[i].status = BLOCK_FRONTIER;
             // Keep trace of the number of free blocks
             numFreeBlocks -= 1;
+            printf("block_info[i].status: %d\n", block_info[i].status);
             return true;
         }
     }
@@ -43,6 +70,7 @@ bool useNextFreeBlock(){
 
 // Checks if the current frontier block is full.
 bool isFrontierBlockFull(){
+    // printf("frontierBlock: %d, frontierPage: %d\n", frontierBlock, frontierPage);
     if (frontierPage >= PAGESPERBLOCK){
         return true;
     }
@@ -300,6 +328,8 @@ void init(){
     // Init mapping table
     struct block_num *bnum;
     totalPhysPages = TOTALPHYSBLOCKS * PAGESPERBLOCK;
+    printf("totalPhysPages: %d\n", totalPhysPages);
+
     totalLogiPages = TOTALLOGIBLOCKS * PAGESPERBLOCK;
 
     // Initialize mapping table

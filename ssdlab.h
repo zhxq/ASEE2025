@@ -38,7 +38,7 @@ enum {
 
 typedef uint32_t mem_addr_t;
 
-static uint32_t curTime = 0;
+extern uint32_t curTime;
 
 struct map {
     int ppn;
@@ -60,30 +60,30 @@ struct page_info {
 };
 
 
-static char *trace_file;
-static bool toIntegrityCheck = 0;
-static bool toPrintWAF = 0;
-static bool exceedMaxOps = 0;
+extern char *trace_file;
+extern bool toIntegrityCheck;
+extern bool toPrintWAF;
+extern bool exceedMaxOps;
 
-static bool errorOccured = 0;
+extern bool errorOccured;
 
-static int frontierBlock = 0;
-static int frontierPage = 0;
+extern int frontierBlock;
+extern int frontierPage;
 
-static int hostWritePages = 0;
-static int realGCPages;
+extern int hostWritePages;
+extern int realGCPages;
 
-static int totalLogiPages;
-static int totalPhysPages;
+extern int totalLogiPages;
+extern int totalPhysPages;
 
-static struct map *maptbl;
-static struct rmap *rmap;
+extern struct map *maptbl;
+extern struct rmap *rmap;
 
-static bool showError;
+extern bool showError;
 
-static int numFreeBlocks;
-static struct block_info block_info[TOTALPHYSBLOCKS];
-static struct page_info page_info[TOTALPHYSBLOCKS][PAGESPERBLOCK];
+extern int numFreeBlocks;
+extern struct block_info block_info[TOTALPHYSBLOCKS];
+extern struct page_info page_info[TOTALPHYSBLOCKS][PAGESPERBLOCK];
 
 // FROM FEMU START
 #define BLK_BITS   (16)

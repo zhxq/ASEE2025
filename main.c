@@ -3,8 +3,10 @@
 // This file will NOT be submitted when you turn in your work.
 // Please make all changes to your ssdlab.c.
 
+uint32_t curTime = 0;
+
 /*
- * replayTrace - replays the given trace file against the cache 
+ * replayTrace - replays the given trace file against the SSD 
  */
 void replayTrace(char* trace_fn){
     char buf[1000];
@@ -38,7 +40,7 @@ void replayTrace(char* trace_fn){
                 exit(1);
             }
 
-            // Check start logical page address: is it out of bound?
+            // Check end logical page address: is it out of bound?
             if (endPage >= totalLogiPages){
                 error_log("Your operation W,%x,%d has a start address 0x%x, which is in SSD logical size range. However, the length of the request %d is too long and exceeds the total logical SSD size 0x%x bytes. Exiting.\n", addr, len, addr, len, totalLogiPages * PAGESIZE);
                 exit(1);
