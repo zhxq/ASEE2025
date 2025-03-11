@@ -60,7 +60,6 @@ bool useNextFreeBlock(){
             block_info[i].status = BLOCK_FRONTIER;
             // Keep trace of the number of free blocks
             numFreeBlocks -= 1;
-            printf("block_info[i].status: %d\n", block_info[i].status);
             return true;
         }
     }
